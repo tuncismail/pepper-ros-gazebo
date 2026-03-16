@@ -201,8 +201,7 @@ class LaserProjection:
         big_str = "\n"
         for i in range(N):
             ri = scan_in.ranges[i]
-            # if ri < range_cutoff and ri >= scan_in.range_min:
-            if True:
+            if ri < range_cutoff and ri >= scan_in.range_min:
                 point = output[:, i].tolist()
                 point.append(0)
                 p = point
@@ -306,7 +305,7 @@ class LaserPublisher(object):
         self.pcr_pub.publish(pc_right)
 
         transform_right_to_front = self.tl.lookupTransform(
-            'base_footprint', 'SurroundingRightLaser_frame', rospy.Time.now())
+            'base_footprint', 'SurroundingRightLaser_frame', rospy.Time(0))
         rospy.logdebug("Transform Right to Front:")
         rospy.logdebug(transform_right_to_front)
         ts = TransformStamped()
@@ -325,7 +324,7 @@ class LaserPublisher(object):
                 (float('nan'), float('nan'), float('nan')))
 
         transform_front_to_front = self.tl.lookupTransform(
-            'base_footprint', 'SurroundingFrontLaser_frame', rospy.Time.now())
+            'base_footprint', 'SurroundingFrontLaser_frame', rospy.Time(0))
         rospy.logdebug("Transform Front to Front:")
         rospy.logdebug(transform_front_to_front)
         ts = TransformStamped()
@@ -341,7 +340,7 @@ class LaserPublisher(object):
             translated_points.append(p)
 
         transform_left_to_front = self.tl.lookupTransform(
-            'base_footprint', 'SurroundingLeftLaser_frame', rospy.Time.now())
+            'base_footprint', 'SurroundingLeftLaser_frame', rospy.Time(0))
         rospy.logdebug("Transform Left to Front:")
         rospy.logdebug(transform_left_to_front)
         ts = TransformStamped()
@@ -445,15 +444,15 @@ class LaserPublisher(object):
             # coords from dist
             x = dist * cos(idx * angle_increment + min_angle)
             y = dist * sin(idx * angle_increment + min_angle)
-            print(" [ px, py, are the correct points ] ")
+            rospy.logdebug(" [ px, py, are the correct points ] ")
             if dist is None:
-                print("Warning: dist is None! Setting to default value.")
-                dist = 0.0  # Default value to prevent TypeError
+                rospy.logwarn("dist is None, setting to 0.0")
+                dist = 0.0
             else:
-                print(f"dist, px, py: {dist} {p[0]} {p[1]}")
-                print(f"dist, x, y:   {dist} {x} {y}")
+                rospy.logdebug(f"dist, px, py: {dist} {p[0]} {p[1]}")
+                rospy.logdebug(f"dist, x, y:   {dist} {x} {y}")
             dist_from_rereproj = self.get_dist(x, y)
-            print("dist rereproj: " + str(dist_from_rereproj))
+            rospy.logdebug("dist rereproj: " + str(dist_from_rereproj))
             # print("dist1       : " + str(dist1))
 
             # what if a make a pointcloud based in the cos sin version
@@ -465,10 +464,10 @@ class LaserPublisher(object):
             expected_angle = idx * self.angle_increment + min_angle
             if not isnan(angle):
                 tmp_angle = angle - min_angle
-                print(f"tmp_angle: {degrees(tmp_angle)} deg")
-                print("angle_increment: " + str(degrees(angle_increment)))
+                rospy.logdebug(f"tmp_angle: {degrees(tmp_angle)} deg")
+                rospy.logdebug("angle_increment: " + str(degrees(angle_increment)))
                 closest_index = int(tmp_angle / angle_increment)
-                print("closest index: " + str(closest_index))
+                rospy.logdebug("closest index: " + str(closest_index))
                 if closest_index >= len(laser_points2):
                     laser_points2[-1] = dist
                 elif closest_index < 0:
@@ -476,18 +475,16 @@ class LaserPublisher(object):
                 else:
                     laser_points2[closest_index] = dist
             else:
-                print("nan, not adding anything to scan")
+                rospy.logdebug("nan, not adding anything to scan")
 
-            # laser_points[]
-            print("Angle from p : " + str(round(degrees(angle), 2)))
-            # print("Angle from xy: " + str(round(degrees(angle2), 2)))
-            print("Expected angle: " + str(round(degrees(expected_angle), 2)))
+            rospy.logdebug("Angle from p : " + str(round(degrees(angle), 2)))
+            rospy.logdebug("Expected angle: " + str(round(degrees(expected_angle), 2)))
 
         rospy.logdebug("Lasered cloud")
         rospy.logdebug(big_str)
 
         laser_points = laser_points2
-        print("Len of laser points after new technique: " + str(len(laser_points)))
+        rospy.logdebug("Len of laser points after new technique: " + str(len(laser_points)))
 
         rereprojected_pc = PointCloud2()
         rereprojected_pc.header.frame_id = 'base_footprint'

@@ -2,7 +2,7 @@ version: '3.8'
 
 # ── Pepper Robot Gazebo Simulation ────────────────────────────────────────────
 #
-# Browser-based GUI (no XQuartz needed):
+# Browser-based GUI (no XQuartz needed — works on macOS and Linux):
 #   docker-compose up pepper_gui
 #   Then open: http://localhost:6080/vnc.html?autoconnect=true&resize=scale
 #
@@ -27,8 +27,14 @@ services:
     ports:
       - "6080:6080"   # noVNC → open http://localhost:6080/vnc.html
       - "5901:5901"   # raw VNC (optional)
+      - "11311:11311" # ROS master (allows host-side ros tools: rostopic, rviz, etc.)
 
-    network_mode: host
+    # Note: network_mode: host does NOT work on macOS (Docker Desktop uses a VM).
+    # Explicit port mapping is used instead — all ROS nodes share the container
+    # network and communicate via localhost inside the container.
+    environment:
+      - ROS_MASTER_URI=http://localhost:11311
+      - ROS_HOSTNAME=localhost
 
     stdin_open: true
     tty: true
@@ -47,7 +53,10 @@ services:
 
     init: true
 
-    network_mode: host
+    environment:
+      - ROS_MASTER_URI=http://localhost:11311
+      - ROS_HOSTNAME=localhost
+
     stdin_open: true
     tty: true
 
@@ -63,7 +72,10 @@ services:
 
     init: true
 
-    network_mode: host
+    environment:
+      - ROS_MASTER_URI=http://localhost:11311
+      - ROS_HOSTNAME=localhost
+
     stdin_open: true
     tty: true
 

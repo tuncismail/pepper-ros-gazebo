@@ -20,26 +20,36 @@
 
 import sys
 import argparse
-import subprocess
 import os
-import math
-from os import path
 
-parser = argparse.ArgumentParser(usage='Load an URDF file')
-parser.add_argument('-i','--input', default=None, help='file containing the trajectory (rostopic echo controller/follow_joint_trajectory/goal)')
+HEADER_LINES = 12   # lines to skip at the start of the rostopic echo output
+FOOTER_LINES = 6    # lines to skip at the end
 
+parser = argparse.ArgumentParser(usage='Convert rostopic echo trajectory output to a clean format')
+parser.add_argument('-i', '--input', default=None, required=True,
+                    help='file containing the trajectory (rostopic echo controller/follow_joint_trajectory/goal)')
 
 args = parser.parse_args()
-if os.path.isfile(args.input):
-    output = args.input[0:args.input.rfind('.')] + '_modified' + args.input[args.input.rfind('.'):]
-    print(output)
-    file = open(args.input,'r')
-    lines = file.readlines()
-    outfile = open(output,'w+')
-    for i in range(12,len(lines)-6):
-        outfile.write(lines[i][2:])
-    file.close()
-    outfile.close()
-else:
-    print("input file doesn't exist")
 
+if not os.path.isfile(args.input):
+    print("Error: input file '{}' does not exist".format(args.input), file=sys.stderr)
+    sys.exit(1)
+
+with open(args.input, 'r') as f:
+    lines = f.readlines()
+
+min_lines = HEADER_LINES + FOOTER_LINES + 1
+if len(lines) < min_lines:
+    print("Error: input file has {} lines, expected at least {}".format(len(lines), min_lines),
+          file=sys.stderr)
+    sys.exit(1)
+
+output = args.input[:args.input.rfind('.')] + '_modified' + args.input[args.input.rfind('.'):]
+print(output)
+
+with open(output, 'w+') as outfile:
+    for line in lines[HEADER_LINES:len(lines) - FOOTER_LINES]:
+        if len(line) >= 2:
+            outfile.write(line[2:])
+        else:
+            outfile.write('\n')

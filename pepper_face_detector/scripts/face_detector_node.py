@@ -34,7 +34,11 @@ class PepperFaceDetector:
         
         # Parameters
         self.face_detection_threshold = rospy.get_param('~face_detection_threshold', 0.7)
-        self.show_visualization = rospy.get_param('~show_visualization', True)
+        # Visualization only works when a display is available (not in headless/Docker)
+        has_display = bool(os.environ.get('DISPLAY', ''))
+        self.show_visualization = rospy.get_param('~show_visualization', True) and has_display
+        if not has_display:
+            rospy.loginfo("No DISPLAY found — visualization disabled")
         
         # Publishers
         self.status_pub = rospy.Publisher('/pepper/face_detector/status', String, queue_size=10)
@@ -83,9 +87,10 @@ class PepperFaceDetector:
                 # Publish status
                 self.status_pub.publish(f"Detected {len(faces)} faces")
             
-            # Display the image (optional, for debugging)
-            cv2.imshow("Pepper Face Detection", cv_image)
-            cv2.waitKey(1)
+            # Display the image (only when a display is available)
+            if self.show_visualization:
+                cv2.imshow("Pepper Face Detection", cv_image)
+                cv2.waitKey(1)
             
         except Exception as e:
             rospy.logerr(f"Error processing image: {e}")
