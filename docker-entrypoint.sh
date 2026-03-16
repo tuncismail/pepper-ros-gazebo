@@ -5,6 +5,23 @@ source /opt/ros/noetic/setup.bash
 source /catkin_ws/devel/setup.bash
 export GAZEBO_MODEL_PATH=$GAZEBO_MODEL_PATH:/catkin_ws/src/pepper_virtual/pepper_gazebo_plugin/models
 
+# Wait for a TCP port to be ready (max 30 seconds)
+wait_for_port() {
+    local port=$1
+    local label=$2
+    local timeout=30
+    local elapsed=0
+    until nc -z localhost "$port" 2>/dev/null; do
+        if [ "$elapsed" -ge "$timeout" ]; then
+            echo "[ERROR] Timed out waiting for $label on port $port"
+            exit 1
+        fi
+        sleep 1
+        elapsed=$((elapsed + 1))
+    done
+    echo "[INFO] $label is ready on port $port"
+}
+
 if [ "$1" = "gui" ]; then
     # ── Browser-accessible Gazebo GUI via Xvnc + noVNC ───────────────────────
     # Open http://localhost:6080/vnc.html in your browser.
@@ -13,23 +30,22 @@ if [ "$1" = "gui" ]; then
     NOVNC_PORT=6080
 
     echo "[INFO] Starting Xvnc on display ${VNC_DISPLAY} (no password)"
-    # Note: no -localhost flag → Xvnc accepts connections from any address.
-    # websockify runs inside the same container so it always connects locally.
+    # -localhost: Xvnc only accepts connections from 127.0.0.1 (websockify is local)
     Xvnc ${VNC_DISPLAY} \
         -geometry 1600x900 \
         -depth 24 \
         -SecurityTypes None \
-        -rfbport ${VNC_PORT} &
+        -rfbport ${VNC_PORT} \
+        -localhost &
     export DISPLAY=${VNC_DISPLAY}
-    sleep 3
+    wait_for_port ${VNC_PORT} "Xvnc"
 
     echo "[INFO] Starting Openbox window manager"
     openbox &
-    sleep 1
 
     echo "[INFO] Starting noVNC websocket proxy on port ${NOVNC_PORT}"
     websockify --web /usr/share/novnc ${NOVNC_PORT} localhost:${VNC_PORT} &
-    sleep 1
+    wait_for_port ${NOVNC_PORT} "noVNC"
 
     echo ""
     echo "╔══════════════════════════════════════════════════════╗"

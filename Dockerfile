@@ -121,9 +121,11 @@ RUN /bin/bash -c \
      catkin_make -DCMAKE_BUILD_TYPE=Release -DCATKIN_ENABLE_TESTING=OFF"
 
 # ─── Shell environment ─────────────────────────────────────────────────────────
+# GAZEBO_MODEL_PATH as ENV so it is available to all processes, not just login shells
+ENV GAZEBO_MODEL_PATH=/catkin_ws/src/pepper_virtual/pepper_gazebo_plugin/models
+
 RUN echo 'source /opt/ros/noetic/setup.bash' >> /home/$USERNAME/.bashrc && \
-    echo 'source /catkin_ws/devel/setup.bash' >> /home/$USERNAME/.bashrc && \
-    echo 'export GAZEBO_MODEL_PATH=$GAZEBO_MODEL_PATH:/catkin_ws/src/pepper_virtual/pepper_gazebo_plugin/models' >> /home/$USERNAME/.bashrc
+    echo 'source /catkin_ws/devel/setup.bash' >> /home/$USERNAME/.bashrc
 
 # ─── VNC password (empty — LAN-only use) ─────────────────────────────────────
 RUN mkdir -p /home/$USERNAME/.vnc && \

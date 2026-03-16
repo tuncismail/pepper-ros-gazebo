@@ -123,9 +123,10 @@ class VelocityTracker(object):
         while not rospy.is_shutdown():
             # Remove People Older Than timeout param
             now = rospy.Time.now()
-            for p in self.people.values():
-                if now - p.age() > self.TIMEOUT:
-                    del self.people[p.id()]
+            to_delete = [pid for pid, p in self.people.items()
+                         if now - p.age() > self.TIMEOUT]
+            for pid in to_delete:
+                del self.people[pid]
             self.publish()
             rate.sleep()
 
