@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<launch>
+  <!-- Launch the leg-face validator node -->
+  <node pkg="pepper_face_detector" type="leg_face_validator.py" name="leg_face_validator" output="screen">
+    <param name="max_distance" value="2.0" />
+  </node>
+</launch>
