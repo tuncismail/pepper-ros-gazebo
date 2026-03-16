@@ -389,8 +389,10 @@ namespace gazebo
       math::Pose pose = parent_->GetRelativePose();
       double yaw = pose.rot.GetYaw();
 #endif
-      double x_vel_cmd = cmd.linear.x * cos(yaw) + cmd.linear.y * sin(yaw);
-      double y_vel_cmd = cmd.linear.x * sin(yaw) - cmd.linear.y * cos(yaw);
+      // Standard 2D rotation matrix: body-frame → world-frame
+      // R(yaw) * [vx; vy] = [cos -sin; sin cos] * [vx; vy]
+      double x_vel_cmd = cmd.linear.x * cos(yaw) - cmd.linear.y * sin(yaw);
+      double y_vel_cmd = cmd.linear.x * sin(yaw) + cmd.linear.y * cos(yaw);
 
       parent_->SetLinearVel(ignition::math::Vector3d(x_vel_cmd, y_vel_cmd, 0.0));
       parent_->SetAngularVel(ignition::math::Vector3d(0.0, 0.0, cmd.angular.z));
