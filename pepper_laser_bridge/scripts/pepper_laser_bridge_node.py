@@ -69,8 +69,8 @@ def main():
             scan.angle_increment = (ANGLE_MAX - ANGLE_MIN) / (PUBLISH_SEGMENTS - 1)
             scan.time_increment  = 0.0
             scan.scan_time       = 0.1
-            scan.range_min       = 0.05
-            scan.range_max       = 3.0
+            scan.range_min       = 0.1   # Pepper front laser physical minimum ~0.1 m
+            scan.range_max       = 5.0   # Pepper front laser physical maximum ~5.0 m
 
             scan.ranges      = interp_ranges.tolist()
             scan.intensities = [1.0] * PUBLISH_SEGMENTS

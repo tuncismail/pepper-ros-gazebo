@@ -468,11 +468,10 @@ class LaserPublisher(object):
                 rospy.logdebug("angle_increment: " + str(degrees(angle_increment)))
                 closest_index = int(tmp_angle / angle_increment)
                 rospy.logdebug("closest index: " + str(closest_index))
-                if closest_index >= len(laser_points2):
-                    laser_points2[-1] = dist
-                elif closest_index < 0:
-                    laser_points2[0] = dist
-                else:
+                # Discard points outside the scan cone — do NOT clamp to boundary
+                # slots, as that would place e.g. a +170° reading at the -120°
+                # position and corrupt navigation costmap data.
+                if 0 <= closest_index < len(laser_points2):
                     laser_points2[closest_index] = dist
             else:
                 rospy.logdebug("nan, not adding anything to scan")
