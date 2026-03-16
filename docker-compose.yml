@@ -1,0 +1,70 @@
+version: '3.8'
+
+# ── Pepper Robot Gazebo Simulation ────────────────────────────────────────────
+#
+# Browser-based GUI (no XQuartz needed):
+#   docker-compose up pepper_gui
+#   Then open: http://localhost:6080/vnc.html?autoconnect=true&resize=scale
+#
+# Headless (CI / SSH):
+#   docker-compose up pepper_headless
+#
+# Interactive shell for debugging:
+#   docker-compose run --rm pepper_shell
+
+services:
+
+  # ── Browser-accessible GUI via noVNC (no XQuartz needed) ──────────────────
+  pepper_gui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: pepper_with_gazebo:noetic
+    container_name: pepper_sim
+
+    init: true   # tini reaps zombie child processes (Xvnc, openbox, websockify)
+
+    ports:
+      - "6080:6080"   # noVNC → open http://localhost:6080/vnc.html
+      - "5901:5901"   # raw VNC (optional)
+
+    network_mode: host
+
+    stdin_open: true
+    tty: true
+
+    # Uses docker-entrypoint.sh "gui" mode:
+    #   Xvnc :1 → openbox → websockify → roslaunch (Gazebo with GUI)
+    command: gui
+
+  # ── Headless simulation (no display required) ──────────────────────────────
+  pepper_headless:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: pepper_with_gazebo:noetic
+    container_name: pepper_sim_headless
+
+    init: true
+
+    network_mode: host
+    stdin_open: true
+    tty: true
+
+    command: headless
+
+  # ── Interactive shell for debugging ───────────────────────────────────────
+  pepper_shell:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: pepper_with_gazebo:noetic
+    container_name: pepper_shell
+
+    init: true
+
+    network_mode: host
+    stdin_open: true
+    tty: true
+
+    command: bash
