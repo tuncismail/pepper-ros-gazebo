@@ -1,8 +1,17 @@
 # Pepper Robot Gazebo Simulation
 
-A complete ROS Noetic simulation environment for the [SoftBank Pepper humanoid robot](https://www.softbankrobotics.com/emea/en/pepper), with Gazebo 11, autonomous navigation, people detection, and face detection — all runnable in a single Docker container with a browser-based GUI (no XQuartz required).
+A complete ROS Noetic simulation environment for the [SoftBank Pepper humanoid robot](https://www.softbankrobotics.com/emea/en/pepper), with Gazebo 11, autonomous navigation, people detection, and face detection.
 
 > **Ported from ROS Kinetic → ROS Noetic** (Ubuntu 20.04). All Python 2 code migrated to Python 3. Fully containerized for Apple Silicon (arm64) and x86_64.
+
+## Branches
+
+| Branch | Platform | How to run |
+|--------|----------|------------|
+| `main` | **macOS** (primary) + any platform | Docker — browser-based GUI via noVNC, no XQuartz needed |
+| `ubuntu` | **Ubuntu 20.04** (primary) + any platform | Native ROS Noetic install or Docker |
+
+Both branches contain the full source and Docker files.
 
 ---
 
