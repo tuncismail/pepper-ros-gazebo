@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<launch>
+  <!-- Launch the face detector node -->
+  <node pkg="pepper_face_detector" type="face_detector_node.py" name="pepper_face_detector" output="screen">
+    <!-- Parameters -->
+    <param name="detection_interval" value="1.0" />
+    <param name="head_movement_speed" value="0.5" />
+    <param name="face_detection_threshold" value="0.7" />
+  </node>
+</launch>
