@@ -499,5 +499,8 @@ class LaserPublisher(object):
 
 
 if __name__ == "__main__":
-    lp = LaserPublisher()
-    rospy.spin()
+    try:
+        lp = LaserPublisher()
+        rospy.spin()
+    except rospy.ROSInterruptException:
+        pass

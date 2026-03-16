@@ -5,10 +5,13 @@
 # Exit codes:  0 = all checks passed
 #              1 = one or more checks failed
 
-set -e
+set -euo pipefail
+# Note: 'set -e' only affects top-level commands; check_topic uses subshells so
+# failures are caught via explicit FAIL counter rather than aborting the script.
+set +e   # disable abort-on-error so we can count all failures
 source /opt/ros/noetic/setup.bash
 source /catkin_ws/devel/setup.bash
-export GAZEBO_MODEL_PATH=$GAZEBO_MODEL_PATH:/catkin_ws/src/pepper_gazebo_plugin/models
+export GAZEBO_MODEL_PATH=$GAZEBO_MODEL_PATH:/catkin_ws/src/pepper_virtual/pepper_gazebo_plugin/models
 
 PASS=0
 FAIL=0
@@ -43,7 +46,7 @@ log "Launching Pepper Gazebo simulation (headless, timeout=${TIMEOUT}s)"
 roslaunch pepper_gazebo_plugin pepper_gazebo_plugin_Y20_CPU_no_arms.launch \
     gui:=false headless:=true &
 LAUNCH_PID=$!
-sleep 15   # give Gazebo time to load world + spawn robot
+sleep 20   # give Gazebo time to load world + spawn robot + start controllers
 
 # ── 4. Check expected ROS topics ─────────────────────────────────────────────
 check_topic() {
@@ -67,7 +70,7 @@ check_topic /pepper/scan_left           "Left laser scan"
 check_topic /pepper/scan_right          "Right laser scan"
 check_topic /joint_states               "Joint states"
 check_topic /tf                         "TF transforms"
-check_topic /odom                       "Odometry"
+check_topic /pepper/odom                "Odometry"
 
 # ── 5. Check robot_description parameter is set ───────────────────────────────
 if rosparam get /robot_description > /dev/null 2>&1; then
@@ -85,7 +88,7 @@ fi
 
 # ── 7. Send a velocity command and verify it doesn't crash the system ─────────
 log "Sending test velocity command"
-rostopic pub -1 /cmd_vel geometry_msgs/Twist \
+rostopic pub -1 /pepper/cmd_vel geometry_msgs/Twist \
     '{ linear: {x: 0.1, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0} }' \
     > /dev/null 2>&1 && ok "cmd_vel accepted" || fail "cmd_vel rejected"
 

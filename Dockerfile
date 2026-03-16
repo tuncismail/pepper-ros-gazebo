@@ -104,6 +104,7 @@ COPY --chown=$USERNAME:$USERNAME pepper_meshes                 /catkin_ws/src/pe
 COPY --chown=$USERNAME:$USERNAME pepper_robot                  /catkin_ws/src/pepper_robot
 COPY --chown=$USERNAME:$USERNAME pepper_virtual                /catkin_ws/src/pepper_virtual
 COPY --chown=$USERNAME:$USERNAME velocity_bridge               /catkin_ws/src/velocity_bridge
+COPY --chown=$USERNAME:$USERNAME test_e2e_headless.sh          /catkin_ws/src/test_e2e_headless.sh
 
 # people_velocity_tracker depends on easy_markers + kalman_filter (non-standard,
 # not in this repo). Mark it to be skipped by catkin.
