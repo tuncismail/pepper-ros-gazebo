@@ -1,48 +1,31 @@
-# Pepper Robot Gazebo Simulation
+# Pepper Robot Gazebo Simulation (ROS 2 Humble)
 
-A complete ROS Noetic simulation environment for the [SoftBank Pepper humanoid robot](https://www.softbankrobotics.com/emea/en/pepper), with Gazebo 11, autonomous navigation, people detection, and face detection.
+A complete ROS 2 Humble simulation environment for the [SoftBank Pepper humanoid robot](https://www.softbankrobotics.com/emea/en/pepper), with Gazebo Classic 11, joint control, autonomous navigation, and realistic odometry.
 
-> **Ported from ROS Kinetic → ROS Noetic** (Ubuntu 20.04). All Python 2 code migrated to Python 3. Fully containerized for Apple Silicon (arm64) and x86_64.
+> **Ported from ROS 1 → ROS 2 Humble** (Ubuntu 22.04). All packages migrated to ament/colcon. Fully containerized for Apple Silicon (arm64) and x86_64 via Docker x86 emulation.
 
 ## Branches
 
-| Branch | Platform | How to run |
-|--------|----------|------------|
-| `main` | **macOS** (primary) + any platform | Docker — browser-based GUI via noVNC, no XQuartz needed |
-| `ubuntu` | **Ubuntu 20.04** (primary) + any platform | Native ROS Noetic install or Docker |
-
-Both branches contain the full source and Docker files.
-
----
-
-## Table of Contents
-
-- [Features](#features)
-- [Quick Start (Docker)](#quick-start-docker)
-- [Architecture](#architecture)
-- [Packages](#packages)
-- [Launch Files](#launch-files)
-- [Control Commands](#control-commands)
-- [Navigation](#navigation)
-- [People & Face Detection](#people--face-detection)
-- [Native Installation](#native-installation)
-- [Docker Reference](#docker-reference)
-- [Testing](#testing)
-- [License](#license)
+| Branch | ROS Version | Platform | How to run |
+|--------|-------------|----------|------------|
+| `main` | ROS Noetic | macOS / any | Docker — browser GUI via noVNC |
+| `ubuntu` | ROS Noetic | Ubuntu 20.04 | Native or Docker |
+| `humble` | **ROS 2 Humble** | macOS / any | Docker — browser GUI via noVNC |
 
 ---
 
 ## Features
 
-- **Browser-based GUI** — Gazebo renders inside a noVNC window accessible at `http://localhost:6080/vnc.html`. No XQuartz, no X11 forwarding needed on macOS.
+- **Browser-based GUI** — Gazebo renders inside a noVNC window at `http://localhost:6080/vnc.html`. No XQuartz or X11 forwarding needed.
 - **One-command start** — `docker-compose up pepper_gui` builds and launches everything.
-- **Apple Silicon (arm64) compatible** — all dependencies resolved for arm64 Ubuntu 20.04.
-- **Realistic odometry** — Gaussian noise and drift matching real Pepper hardware.
-- **Multiple simulation variants** — GPU / CPU / no-arms / office / house / navigation worlds.
-- **Full navigation stack** — AMCL, move_base, costmap layers (range sensor + social navigation).
-- **People detection suite** — leg detector (laser-based ML), face detector (OpenCV Haar cascade), velocity tracker.
-- **ROS control** — trajectory controllers for head, pelvis, and arms; velocity plugin for base movement.
-- **Real robot bridge** — `pepper_bridge` package for bridging to physical Pepper via NAOqi (excluded from Docker build; Python 2 + NAOqi SDK required).
+- **Apple Silicon compatible** — runs on arm64 via Docker x86 emulation.
+- **Joint control** — ros2_control with joint_state_broadcaster, head and pelvis trajectory controllers.
+- **Physics-based velocity** — velocity controller reads current pose from Gazebo physics, applies cmd_vel without teleportation.
+- **Realistic odometry** — Gaussian noise (σ_xy=0.005m, σ_yaw=0.001rad) calibrated to real Pepper, plus a groundtruth topic.
+- **Navigation stack** — Nav2 with SLAM (slam_toolbox) or AMCL localization, DWB local planner.
+- **Multiple worlds** — empty, house, small office, office with people, nao test arena.
+- **Merged laser scan** — three physical laser sensors combined into a single `/pepper/scan_merged` topic.
+- **gazebo_ros2_control patch** — fixes the URDF-in-argv crash that breaks controller_manager on large URDFs.
 
 ---
 
@@ -56,8 +39,8 @@ Both branches contain the full source and Docker files.
 ### Run
 
 ```bash
-git clone https://github.com/tuncismail/pepper_with_gazebo.git
-cd pepper_with_gazebo
+git clone -b humble https://github.com/tuncismail/pepper-ros-gazebo.git
+cd pepper-ros-gazebo
 
 docker-compose up pepper_gui
 ```
@@ -68,7 +51,7 @@ Open your browser at:
 http://localhost:6080/vnc.html?autoconnect=true&resize=scale
 ```
 
-Gazebo will load with Pepper standing in an empty world. The first run builds the Docker image (~10–15 min depending on connection speed).
+Gazebo will load with Pepper in an empty world. First build takes ~10–15 min.
 
 ### Headless (no display)
 
@@ -87,23 +70,25 @@ docker-compose run --rm pepper_shell
 ## Architecture
 
 ```
-pepper_with_gazebo/
+pepper-ros-gazebo/
 │
-├── Dockerfile                   # ROS Noetic + Gazebo 11 image (arm64 + amd64)
+├── Dockerfile                   # ROS 2 Humble + Gazebo 11 image (amd64)
 ├── docker-compose.yml           # GUI / headless / shell services
-├── docker-entrypoint.sh         # Xvnc → openbox → noVNC → roslaunch
-├── test_e2e_headless.sh         # End-to-end test (headless)
+├── docker-entrypoint.sh         # Xvnc → openbox → noVNC → ros2 launch
+├── test_e2e_headless.sh         # End-to-end test (headless, 9 checks)
+├── patches/                     # Source patches (gazebo_ros2_control fix)
 │
 ├── pepper_robot/                # Pepper URDF description & metapackage
-├── pepper_virtual/              # Gazebo plugin + ROS controllers
+├── pepper_virtual/              # Gazebo plugin, controllers, launch files
 ├── pepper_meshes/               # 3D mesh files (CC-BY-NC-ND 4.0)
-├── gazebo_model_velocity_plugin/# Base velocity plugin (odometry, noise, limits)
-├── people/                      # Leg detector, tracking filter, velocity tracker
-├── pepper_face_detector/        # OpenCV Haar cascade face detection
-├── pepper_laser_bridge/         # Laser data bridge (sim ↔ real)
+├── gazebo_model_velocity_plugin/# Base velocity Gazebo plugin (C++)
+├── pepper_laser_bridge/         # Laser data bridge (sim ↔ real robot)
 ├── velocity_bridge/             # cmd_vel bridge
-├── navigation_layers/           # Range sensor + social navigation costmap layers
-└── pepper_bridge/               # Real robot bridge (NAOqi, excluded from Docker)
+│
+├── people/                      # [COLCON_IGNORE] ROS 1 leg detector suite
+├── pepper_face_detector/        # [COLCON_IGNORE] ROS 1 face detection
+├── navigation_layers/           # [COLCON_IGNORE] ROS 1 costmap layers
+└── pepper_bridge/               # [COLCON_IGNORE] ROS 1 NAOqi bridge
 ```
 
 ### GUI pipeline (inside container)
@@ -111,7 +96,7 @@ pepper_with_gazebo/
 ```
 Xvnc :1 (port 5901)
   └── openbox (window manager)
-  └── roslaunch Gazebo (DISPLAY=:1)
+  └── ros2 launch Gazebo (DISPLAY=:1)
 websockify → noVNC (port 6080)  ←  browser
 ```
 
@@ -121,116 +106,69 @@ websockify → noVNC (port 6080)  ←  browser
 
 ### `pepper_robot` / `pepper_description`
 
-URDF model of Pepper with corrected TF tree (`base_footprint`-oriented). Includes all joint definitions, inertias, and sensor mounts.
-
-Key files:
-- `pepper_description/urdf/pepper.urdf.xacro` — main robot model
-- `pepper_description/launch/pepper_upload_CPU_no_arms.launch` — upload URDF to parameter server (CPU, no arms)
+URDF model of Pepper with corrected TF tree (`base_footprint`-oriented). Includes joint definitions, inertias, and sensor mounts. Uses the no-arms CPU variant for simulation.
 
 ### `pepper_virtual`
 
 #### `pepper_gazebo_plugin`
 
-Launches Pepper in Gazebo. Handles sensor plugins (camera, depth, laser), loads controllers, spawns the robot model.
-
-Config files (in `config/`):
-| File | Purpose |
-|------|---------|
-| `costmap_common_params.yaml` | Shared costmap parameters |
-| `global_costmap_params.yaml` | Global planner costmap |
-| `local_costmap_params.yaml` | Local planner costmap |
-| `dwa_local_planner_params.yaml` | DWA planner tuning |
-| `base_local_planner_params.yaml` | Base planner parameters |
+Launches Pepper in Gazebo. Handles sensor plugins (camera, depth, laser), spawns the robot, runs velocity and odometry nodes.
 
 Scripts:
-- `laser_publisher.py` — merges 3 laser sensors into a unified `/pepper/scan` topic
-- `pub_lasers.py` — publishes individual laser scans
+- `laser_publisher.py` — merges 3 laser sensors into a unified `/pepper/scan_merged` topic
+- `velocity_controller.py` — physics-based base motion via `/pepper/cmd_vel`
+- `odom_publisher.py` — publishes `/pepper/odom` (noisy) and `/pepper/odom_groundtruth` (clean)
+
+Config:
+- `nav2_params.yaml` — full Nav2 configuration (AMCL, DWB, costmaps, SLAM)
 
 #### `pepper_control`
 
-ROS controllers for Pepper's joints using `ros_control`.
+ROS 2 controllers for Pepper's joints using `ros2_control`.
 
-Config: `pepper_trajectory_control.yaml`
+Config: `pepper_ros2_controllers.yaml`
 
 | Controller | Type | Joints |
 |-----------|------|--------|
-| `joint_state_controller` | JointStateController | all |
-| `Head_controller` | JointTrajectoryController | HeadYaw, HeadPitch |
-| `Pelvis_controller` | JointTrajectoryController | HipRoll, HipPitch, KneePitch |
-| `LeftArm_controller` | JointTrajectoryController | LShoulderPitch, LShoulderRoll, LElbowYaw, LElbowRoll, LWristYaw |
-| `RightArm_controller` | JointTrajectoryController | RShoulderPitch, RShoulderRoll, RElbowYaw, RElbowRoll, RWristYaw |
+| `joint_state_broadcaster` | JointStateBroadcaster | all |
+| `head_controller` | JointTrajectoryController | HeadYaw, HeadPitch |
+| `pelvis_controller` | JointTrajectoryController | HipRoll, HipPitch, KneePitch |
 
 ### `gazebo_model_velocity_plugin`
 
-Gazebo world plugin that drives Pepper's base via `/pepper/cmd_vel`. Features:
-- Gaussian odometry noise (XY + Yaw configurable)
-- Velocity, acceleration, and jerk limits
-- Publishes `/pepper/odom` with realistic drift
+Gazebo world plugin (C++) that drives Pepper's base. Provides the physics interface used by `velocity_controller.py`.
 
-### `people`
+### `patches/fix_gazebo_ros2_control_urdf_argv.patch`
 
-People detection and tracking suite:
-
-| Package | Purpose |
-|---------|---------|
-| `people_msgs` | Custom message types (`Person`, `People`, `PositionMeasurement`) |
-| `leg_detector` | ML-based leg detection from 2D laser scan |
-| `people_tracking_filter` | Kalman filter for person position tracking |
-| `people_velocity_tracker` | Tracks velocity of detected persons (requires `easy_markers` + `kalman_filter` — excluded from Docker build via `CATKIN_IGNORE`) |
-
-### `pepper_face_detector`
-
-Face detection using OpenCV Haar cascades. Subscribes to `/pepper/camera/front/image_raw`, publishes detected faces and combined people+face detections.
-
-- `face_detector_node.py` — detects faces, publishes bounding boxes
-- `leg_face_validator2.py` — validates leg detections with face confirmation, publishes `/people`
-
-### `navigation_layers`
-
-Custom costmap plugins:
-- `range_sensor_layer` — adds sonar/IR range sensors to the costmap
-- `social_navigation_layers` — maintains personal space around detected people
-
-### `pepper_laser_bridge` / `velocity_bridge`
-
-Lightweight bridges for republishing laser scans and velocity commands between namespaces.
+Patches `gazebo_ros2_control` 0.4.10 to fix a crash where `rcl_parse_arguments()` fails on large URDFs passed via `--param` argv. The fix passes `robot_description` via `NodeOptions::append_parameter_override()` instead.
 
 ---
 
 ## Launch Files
 
+All launch files are in `pepper_virtual/pepper_gazebo_plugin/launch/`.
+
 ### Simulation variants
 
-| Launch file | World | GPU | Arms |
-|------------|-------|-----|------|
-| `pepper_gazebo_plugin_Y20.launch` | empty | yes | yes |
-| `pepper_gazebo_plugin_Y20_CPU.launch` | empty | no | yes |
-| `pepper_gazebo_plugin_Y20_CPU_no_arms.launch` | empty | no | no |
-| `pepper_gazebo_plugin_in_office.launch` | office | yes | yes |
-| `pepper_gazebo_plugin_in_office_CPU.launch` | office | no | yes |
-| `pepper_gazebo_plugin_in_office_CPU_no_arms.launch` | office | no | no |
-| `pepper_gazebo_plugin_house_CPU_no_arms.launch` | house | no | no |
-| `pepper_gazebo_plugin_Y20_CPU_no_arms_navigation.launch` | empty | no | no |
+| Launch file | World |
+|------------|-------|
+| `pepper_gazebo_plugin_Y20_CPU_no_arms.launch.py` | empty (default) |
+| `pepper_gazebo_plugin_house1.launch.py` | house |
+| `pepper_gazebo_plugin_small_office.launch.py` | small office |
+| `pepper_gazebo_plugin_simple_office_with_people.launch.py` | office with people |
+| `pepper_gazebo_plugin_nao_test.launch.py` | nao test arena |
 
-> All launch files are in `pepper_virtual/pepper_gazebo_plugin/launch/`.
-
-### Navigation & mapping
+### Navigation
 
 ```bash
-# Start navigation (after simulation is running)
-roslaunch pepper_gazebo_plugin pepper_gazebo_plugin_Y20_CPU_no_arms_navigation.launch
+# Launch with SLAM (default)
+ros2 launch pepper_gazebo_plugin pepper_navigation.launch.py
 
-# Mapping
-roslaunch pepper_gazebo_plugin pepper_mapping.launch
-```
+# Launch with AMCL + existing map
+ros2 launch pepper_gazebo_plugin pepper_navigation.launch.py use_slam:=false map:=/path/to/map.yaml
 
-### People detection
-
-```bash
-roslaunch leg_detector leg_detector.launch
-roslaunch people_tracking_filter filter.launch
-roslaunch pepper_face_detector face_detector.launch
-roslaunch pepper_face_detector leg_face_validator.launch
+# Choose a different world
+ros2 launch pepper_gazebo_plugin pepper_navigation.launch.py world:=house1.world
 ```
 
 ---
@@ -241,110 +179,60 @@ roslaunch pepper_face_detector leg_face_validator.launch
 
 ```bash
 # Move forward
-rostopic pub /pepper/cmd_vel geometry_msgs/Twist \
-  "linear: {x: 0.3, y: 0.0, z: 0.0}" \
-  "angular: {x: 0.0, y: 0.0, z: 0.0}" --once
+ros2 topic pub --once /pepper/cmd_vel geometry_msgs/msg/Twist \
+  '{"linear": {"x": 0.3}, "angular": {"z": 0.0}}'
 
 # Rotate in place
-rostopic pub /pepper/cmd_vel geometry_msgs/Twist \
-  "linear: {x: 0.0, y: 0.0, z: 0.0}" \
-  "angular: {x: 0.0, y: 0.0, z: 0.5}" --once
+ros2 topic pub --once /pepper/cmd_vel geometry_msgs/msg/Twist \
+  '{"linear": {"x": 0.0}, "angular": {"z": 0.5}}'
 
 # Stop
-rostopic pub /pepper/cmd_vel geometry_msgs/Twist "{}" --once
+ros2 topic pub --once /pepper/cmd_vel geometry_msgs/msg/Twist \
+  '{"linear": {"x": 0.0}, "angular": {"z": 0.0}}'
 ```
 
 ### Head control
 
 ```bash
-rostopic pub /pepper/Head_controller/command \
-  trajectory_msgs/JointTrajectory \
-  '{joint_names: ["HeadYaw","HeadPitch"],
-    points: [{positions: [0.5, -0.2], velocities: [0,0], time_from_start: {secs: 1}}]}' --once
+ros2 action send_goal /head_controller/follow_joint_trajectory \
+  control_msgs/action/FollowJointTrajectory \
+  '{trajectory: {joint_names: ["HeadYaw", "HeadPitch"],
+    points: [{positions: [0.5, -0.2], time_from_start: {sec: 1}}]}}'
 ```
 
 ### Pelvis control
 
 ```bash
-rostopic pub /pepper/Pelvis_controller/command \
-  trajectory_msgs/JointTrajectory \
-  '{joint_names: ["HipRoll","HipPitch","KneePitch"],
-    points: [{positions: [0.0, 0.1, 0.1], velocities: [0,0,0], time_from_start: {secs: 1}}]}' --once
+ros2 action send_goal /pelvis_controller/follow_joint_trajectory \
+  control_msgs/action/FollowJointTrajectory \
+  '{trajectory: {joint_names: ["HipRoll", "HipPitch", "KneePitch"],
+    points: [{positions: [0.0, 0.1, 0.1], time_from_start: {sec: 1}}]}}'
 ```
 
 ### Key topics
 
 | Topic | Type | Description |
 |-------|------|-------------|
-| `/pepper/cmd_vel` | `geometry_msgs/Twist` | Base velocity command |
-| `/pepper/odom` | `nav_msgs/Odometry` | Base odometry |
-| `/pepper/scan` | `sensor_msgs/LaserScan` | Merged laser scan |
-| `/pepper/camera/front/image_raw` | `sensor_msgs/Image` | Front RGB camera |
-| `/pepper/camera/depth/image_raw` | `sensor_msgs/Image` | Depth camera |
-| `/pepper/joint_states` | `sensor_msgs/JointState` | All joint states |
-| `/pepper/Head_controller/command` | `trajectory_msgs/JointTrajectory` | Head trajectory |
-| `/pepper/Pelvis_controller/command` | `trajectory_msgs/JointTrajectory` | Pelvis trajectory |
-| `/pepper/LeftArm_controller/command` | `trajectory_msgs/JointTrajectory` | Left arm trajectory |
-| `/pepper/RightArm_controller/command` | `trajectory_msgs/JointTrajectory` | Right arm trajectory |
-| `/people` | `people_msgs/People` | Detected people |
-| `/face_detections` | custom | Detected faces |
+| `/pepper/cmd_vel` | `geometry_msgs/msg/Twist` | Base velocity command |
+| `/pepper/odom` | `nav_msgs/msg/Odometry` | Base odometry (with noise) |
+| `/pepper/odom_groundtruth` | `nav_msgs/msg/Odometry` | Ground truth odometry |
+| `/pepper/scan_front` | `sensor_msgs/msg/LaserScan` | Front laser scan |
+| `/pepper/scan_left` | `sensor_msgs/msg/LaserScan` | Left laser scan |
+| `/pepper/scan_right` | `sensor_msgs/msg/LaserScan` | Right laser scan |
+| `/pepper/scan_merged` | `sensor_msgs/msg/LaserScan` | Merged 360° laser scan |
+| `/pepper/camera/front/image_raw` | `sensor_msgs/msg/Image` | Front RGB camera |
+| `/pepper/camera/depth/image_raw` | `sensor_msgs/msg/Image` | Depth camera |
+| `/joint_states` | `sensor_msgs/msg/JointState` | All joint states |
+| `/tf` | `tf2_msgs/msg/TFMessage` | TF transforms |
 
----
+### Navigation topics (when using `pepper_navigation.launch.py`)
 
-## Navigation
-
-The navigation stack uses AMCL for localization and `move_base` for path planning.
-
-```bash
-# Inside the container, after simulation is up:
-roslaunch pepper_gazebo_plugin pepper_gazebo_plugin_Y20_CPU_no_arms_navigation.launch
-
-# Send a navigation goal via RViz or:
-rostopic pub /move_base_simple/goal geometry_msgs/PoseStamped \
-  '{header: {frame_id: "map"},
-    pose: {position: {x: 2.0, y: 1.0, z: 0.0},
-           orientation: {w: 1.0}}}' --once
-```
-
----
-
-## Native Installation
-
-If you prefer to run without Docker (ROS Noetic on Ubuntu 20.04 required):
-
-```bash
-# Install ROS Noetic
-# http://wiki.ros.org/noetic/Installation/Ubuntu
-
-sudo apt-get install -y \
-  ros-noetic-gazebo-ros ros-noetic-gazebo-ros-control ros-noetic-gazebo-plugins \
-  ros-noetic-ros-control ros-noetic-ros-controllers ros-noetic-controller-manager \
-  ros-noetic-navigation ros-noetic-move-base ros-noetic-amcl \
-  ros-noetic-tf2-sensor-msgs ros-noetic-tf2-geometry-msgs \
-  ros-noetic-depthimage-to-laserscan ros-noetic-pcl-ros \
-  ros-noetic-robot-state-publisher ros-noetic-joint-state-publisher ros-noetic-xacro \
-  ros-noetic-cv-bridge ros-noetic-image-transport python3-opencv \
-  ros-noetic-ddynamic-reconfigure \
-  liborocos-bfl-dev libprotobuf-dev protobuf-compiler
-
-mkdir -p ~/catkin_ws/src
-cd ~/catkin_ws/src
-
-git clone https://github.com/tuncismail/pepper_with_gazebo.git
-
-# Skip packages with unresolvable dependencies
-touch pepper_with_gazebo/people/people_velocity_tracker/CATKIN_IGNORE
-
-cd ~/catkin_ws
-source /opt/ros/noetic/setup.bash
-catkin_make -DCMAKE_BUILD_TYPE=Release -DCATKIN_ENABLE_TESTING=OFF
-source devel/setup.bash
-
-export GAZEBO_MODEL_PATH=$GAZEBO_MODEL_PATH:$(rospack find pepper_gazebo_plugin)/models
-
-# Launch
-roslaunch pepper_gazebo_plugin pepper_gazebo_plugin_Y20_CPU_no_arms.launch
-```
+| Topic | Type | Description |
+|-------|------|-------------|
+| `/goal_pose` | `geometry_msgs/msg/PoseStamped` | Navigation goal |
+| `/map` | `nav_msgs/msg/OccupancyGrid` | SLAM/map server output |
+| `/local_costmap/costmap` | `nav_msgs/msg/OccupancyGrid` | Local costmap |
+| `/global_costmap/costmap` | `nav_msgs/msg/OccupancyGrid` | Global costmap |
 
 ---
 
@@ -353,7 +241,7 @@ roslaunch pepper_gazebo_plugin pepper_gazebo_plugin_Y20_CPU_no_arms.launch
 ### Build manually
 
 ```bash
-docker build -t pepper_with_gazebo:noetic .
+docker build --platform linux/amd64 -t pepper_with_gazebo:humble .
 ```
 
 ### Run manually
@@ -363,16 +251,19 @@ docker build -t pepper_with_gazebo:noetic .
 docker run -d --rm --init \
   --name pepper_gui \
   -p 6080:6080 -p 5901:5901 \
-  pepper_with_gazebo:noetic gui
+  --platform linux/amd64 \
+  pepper_with_gazebo:humble gui
 
 # Then open:
 # http://localhost:6080/vnc.html?autoconnect=true&resize=scale
 
 # Headless
-docker run --rm --init pepper_with_gazebo:noetic headless
+docker run --rm --init --platform linux/amd64 \
+  pepper_with_gazebo:humble headless
 
 # Interactive shell
-docker run -it --rm --init pepper_with_gazebo:noetic bash
+docker run -it --rm --init --platform linux/amd64 \
+  pepper_with_gazebo:humble bash
 ```
 
 ### Docker Compose services
@@ -383,47 +274,35 @@ docker run -it --rm --init pepper_with_gazebo:noetic bash
 | `pepper_headless` | Headless Gazebo (no display) | — |
 | `pepper_shell` | Interactive bash shell | — |
 
-```bash
-# GUI
-docker-compose up pepper_gui
-
-# Headless
-docker-compose up pepper_headless
-
-# Shell
-docker-compose run --rm pepper_shell
-```
-
-> **Note**: `--init` is set in `docker-compose.yml` for all services to prevent zombie processes (Xvnc, openbox, websockify child processes).
-
 ---
 
 ## Testing
 
-An end-to-end headless test script is included:
+An end-to-end headless test verifies 9 checks:
 
 ```bash
-# Native
-./test_e2e_headless.sh
-
-# Inside Docker shell
-docker-compose run --rm pepper_shell bash /catkin_ws/src/test_e2e_headless.sh
+# Inside Docker
+docker-compose run --rm pepper_shell bash /colcon_ws/src/test_e2e_headless.sh
 ```
 
 The test verifies:
-- roscore starts
-- Gazebo spawns Pepper model
-- All 13 expected topics are active (`/pepper/joint_states`, `/pepper/scan`, `/pepper/odom`, cameras, controllers)
-- Base movement (`cmd_vel`) produces odometry displacement
+- Xvfb + Gazebo start successfully
+- Pepper model spawns in Gazebo
+- All laser scan topics active (`/pepper/scan_front`, `scan_left`, `scan_right`)
+- `/joint_states` and `/tf` publishing
+- `/pepper/odom` publishing (confirms odom_publisher + model spawn)
+- `robot_description` parameter loaded on `/robot_state_publisher`
+- `/pepper/cmd_vel` accepts velocity commands
 
 ---
 
 ## Notes & Known Limitations
 
-- **`people_velocity_tracker`** is disabled (`CATKIN_IGNORE`) — it requires `easy_markers` and `kalman_filter` packages not available in this repo.
-- **`pepper_bridge`** is excluded from the Docker build — it requires Python 2 and the proprietary NAOqi SDK for real robot communication.
-- **`ros-noetic-pepper-meshes`** has no arm64 binary on apt; the `pepper_meshes/` package in this repo provides the meshes directly.
-- The VNC session has no password (LAN/local use only). Do not expose port 5901 to the internet.
+- **ROS 1 packages disabled** — `people/`, `pepper_face_detector/`, `navigation_layers/`, `pepper_bridge/` are marked with `COLCON_IGNORE`. They require ROS 1 (rospy/catkin) and need porting to work with ROS 2.
+- **No arm controllers** — the no-arms URDF variant is used; arm joints are not simulated.
+- **x86 emulation on Apple Silicon** — Gazebo runs under Docker's x86 emulation, which is slower than native. Expect ~55s startup time for the simulation.
+- **VNC has no password** — for LAN/local use only. Do not expose port 5901 to the internet.
+- **gazebo_ros2_control patch** — built from source with a patch because the apt package crashes on Pepper's large URDF. See `patches/` for details.
 
 ---
 
@@ -434,8 +313,7 @@ This project is based on and extends the following upstream work:
 - [ros-naoqi/pepper_virtual](https://github.com/ros-naoqi/pepper_virtual) — original Pepper Gazebo simulation
 - [ros-naoqi/pepper_robot](https://github.com/ros-naoqi/pepper_robot) — Pepper URDF description
 - [awesomebytes/gazebo_model_velocity_plugin](https://github.com/awesomebytes/gazebo_model_velocity_plugin) — base velocity plugin
-- [DLu/navigation_layers](https://github.com/DLu/navigation_layers) — social & range sensor costmap layers
-- [wg-perception/people](https://github.com/wg-perception/people) — people detection suite
+- [ros-controls/gazebo_ros2_control](https://github.com/ros-controls/gazebo_ros2_control) — ros2_control Gazebo integration
 
 ---
 

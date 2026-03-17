@@ -3,7 +3,7 @@ project(pepper_description)
 
 find_package(ament_cmake REQUIRED)
 
-install(DIRECTORY launch urdf meshes
+install(DIRECTORY urdf meshes
   DESTINATION share/${PROJECT_NAME}
 )
 
