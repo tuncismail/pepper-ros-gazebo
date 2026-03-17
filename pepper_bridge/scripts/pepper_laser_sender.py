@@ -8,12 +8,12 @@ import time
 from naoqi import ALProxy
 
 # ───── Setup ─────────────────────────────────────────────────────────────
-PEPPER_IP   = "192.168.1.188"    # Pepper’ın IP’si
+PEPPER_IP   = "192.168.1.188"    # Pepper's IP address
 PEPPER_PORT = 9559
-ROS_PC_IP   = "172.23.105.204"   # ROS PC’nizin IP’si
-ROS_PC_PORT = 5006               # Aynı portu alıcı da dinlemeli
+ROS_PC_IP   = "172.23.105.204"   # ROS PC's IP address
+ROS_PC_PORT = 5006               # Receiver must listen on the same port
 
-# NAOqi servislerine bağlan
+# Connect to NAOqi services
 laser  = ALProxy("ALLaser",  PEPPER_IP, PEPPER_PORT)
 memory = ALProxy("ALMemory", PEPPER_IP, PEPPER_PORT)
 motion = ALProxy("ALMotion", PEPPER_IP, PEPPER_PORT)
@@ -21,10 +21,10 @@ laser.laserON()
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-# ───── Constants (sadece ön lazer) ───────────────────────────────────────
+# ───── Constants (front laser only) ───────────────────────────────────────
 BASE        = "Device/SubDeviceList/Platform/LaserSensor/"
-DEVS        = ["Front/"]      # ◀︎ sadece ön lazer
-SEGMENTS    = 15              # her beam bir yatay açıyı temsil eder
+DEVS        = ["Front/"]      # front laser only
+SEGMENTS    = 15              # each beam represents a horizontal angle
 TOTAL_BEAMS = SEGMENTS        # = 15
 
 print("[INFO] Sending Pepper front-laser data to {}:{}...".format(ROS_PC_IP, ROS_PC_PORT))
@@ -33,7 +33,7 @@ print("[INFO] Sending Pepper front-laser data to {}:{}...".format(ROS_PC_IP, ROS
 while True:
     vectors = []
 
-    # Sadece Front/ altındaki 15 segmanı oku
+    # Read the 15 segments under Front/
     for dev in DEVS:
         for seg in range(1, SEGMENTS + 1):
             kx = "%s%sHorizontal/Seg%02d/X/Sensor/Value" % (BASE, dev, seg)
@@ -43,10 +43,10 @@ while True:
                 y = memory.getData(ky)
                 vectors.append([x, y])
             except:
-                # Okuma hatasıysa sonsuz uzaklık
+                # On read error, use infinite range
                 vectors.append([float('inf'), float('inf')])
 
-    # JSON olarak paketle ve UDP ile gönder
+    # Pack as JSON and send via UDP
     payload = json.dumps({"vectors": vectors})
     sock.sendto(payload.encode("utf-8"), (ROS_PC_IP, ROS_PC_PORT))
 

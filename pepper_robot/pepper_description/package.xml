@@ -1,20 +1,16 @@
 <?xml version="1.0"?>
-<package>
+<package format="3">
   <name>pepper_description</name>
-  <version>0.1.10</version>
-  <description>The pepper_description package</description>
-
-  <author>Karsten Knese</author>
-  <maintainer email="surya.ambrose@gmail.com">Surya Ambrose</maintainer>
-  <maintainer email="natalia.lyubova@gmail.com">Natalia Lyubova</maintainer>
-  <maintainer email="mchamoux@softbankrobotics.com">Marine Chamoux</maintainer>
-
-  <license>Apache 2.0</license>
-
-  <run_depend>robot_state_publisher</run_depend>
-  <run_depend>urdf</run_depend>
-  <run_depend>xacro</run_depend>
-
-  <buildtool_depend>catkin</buildtool_depend>
-
+  <version>1.0.0</version>
+  <description>Pepper robot URDF description</description>
+  <maintainer email="user@example.com">user</maintainer>
+  <license>MIT</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <depend>robot_state_publisher</depend>
+  <depend>joint_state_publisher</depend>
+  <depend>xacro</depend>
+  <depend>gazebo_ros</depend>
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
 </package>
