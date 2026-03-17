@@ -1,24 +1,10 @@
-cmake_minimum_required(VERSION 2.8.3)
+cmake_minimum_required(VERSION 3.8)
 project(pepper_description)
 
-## Find catkin macros and libraries
-## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
-## is used, also find other catkin packages
-find_package(catkin REQUIRED)
+find_package(ament_cmake REQUIRED)
 
-## System dependencies are found with CMake's conventions
-# find_package(Boost REQUIRED COMPONENTS system)
+install(DIRECTORY launch urdf meshes
+  DESTINATION share/${PROJECT_NAME}
+)
 
-catkin_package()
-
-# Instructions to install launch files
-install(DIRECTORY launch/
-     DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch)
-
-# Instructions to install config files
-install(DIRECTORY config/
-     DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/config)
-
-# Instructions to install launch files
-install(DIRECTORY urdf/
-     DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/urdf)
+ament_package()

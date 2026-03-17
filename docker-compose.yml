@@ -1,82 +1,47 @@
 version: '3.8'
 
-# ── Pepper Robot Gazebo Simulation ────────────────────────────────────────────
-#
-# Browser-based GUI (no XQuartz needed — works on macOS and Linux):
-#   docker-compose up pepper_gui
-#   Then open: http://localhost:6080/vnc.html?autoconnect=true&resize=scale
-#
-# Headless (CI / SSH):
-#   docker-compose up pepper_headless
-#
-# Interactive shell for debugging:
-#   docker-compose run --rm pepper_shell
-
 services:
-
-  # ── Browser-accessible GUI via noVNC (no XQuartz needed) ──────────────────
   pepper_gui:
     build:
       context: .
       dockerfile: Dockerfile
-    image: pepper_with_gazebo:noetic
+    image: pepper_with_gazebo:humble
+    platform: linux/amd64
     container_name: pepper_sim
-
-    init: true   # tini reaps zombie child processes (Xvnc, openbox, websockify)
-
+    init: true
     ports:
-      - "6080:6080"   # noVNC → open http://localhost:6080/vnc.html
-      - "5901:5901"   # raw VNC (optional)
-      - "11311:11311" # ROS master (allows host-side ros tools: rostopic, rviz, etc.)
-
-    # Note: network_mode: host does NOT work on macOS (Docker Desktop uses a VM).
-    # Explicit port mapping is used instead — all ROS nodes share the container
-    # network and communicate via localhost inside the container.
+      - "6080:6080"
+      - "5901:5901"
     environment:
-      - ROS_MASTER_URI=http://localhost:11311
-      - ROS_HOSTNAME=localhost
-
+      - ROS_DOMAIN_ID=0
     stdin_open: true
     tty: true
-
-    # Uses docker-entrypoint.sh "gui" mode:
-    #   Xvnc :1 → openbox → websockify → roslaunch (Gazebo with GUI)
     command: gui
 
-  # ── Headless simulation (no display required) ──────────────────────────────
   pepper_headless:
     build:
       context: .
       dockerfile: Dockerfile
-    image: pepper_with_gazebo:noetic
+    image: pepper_with_gazebo:humble
+    platform: linux/amd64
     container_name: pepper_sim_headless
-
     init: true
-
     environment:
-      - ROS_MASTER_URI=http://localhost:11311
-      - ROS_HOSTNAME=localhost
-
+      - ROS_DOMAIN_ID=0
     stdin_open: true
     tty: true
-
     command: headless
 
-  # ── Interactive shell for debugging ───────────────────────────────────────
   pepper_shell:
     build:
       context: .
       dockerfile: Dockerfile
-    image: pepper_with_gazebo:noetic
+    image: pepper_with_gazebo:humble
+    platform: linux/amd64
     container_name: pepper_shell
-
     init: true
-
     environment:
-      - ROS_MASTER_URI=http://localhost:11311
-      - ROS_HOSTNAME=localhost
-
+      - ROS_DOMAIN_ID=0
     stdin_open: true
     tty: true
-
     command: bash

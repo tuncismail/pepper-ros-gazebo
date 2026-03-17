@@ -1,67 +1,48 @@
-# Pepper Robot Gazebo Simulation - Docker Image
-# Using ros-base (minimal) instead of desktop-full to reduce attack surface.
-# Security patches are applied immediately after base image pull.
-FROM ros:noetic-ros-base-focal
+# Pepper Robot Gazebo Simulation - ROS 2 Humble
+FROM --platform=linux/amd64 ros:humble-ros-base-jammy
 
 LABEL maintainer="pepper_with_gazebo"
-LABEL description="Pepper humanoid robot simulation with Gazebo, navigation, people detection, and face detection"
+LABEL description="Pepper robot simulation with ROS 2 Humble + Gazebo Classic 11"
 
 ENV DEBIAN_FRONTEND=noninteractive
-ENV ROS_DISTRO=noetic
+ENV ROS_DISTRO=humble
 
-# ─── Apply all OS security patches first ──────────────────────────────────────
 RUN apt-get update && apt-get upgrade -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
-# ─── System & ROS dependencies ────────────────────────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    # Build tools
-    build-essential \
-    cmake \
-    git \
-    wget \
-    python3-pip \
-    python3-catkin-tools \
-    # Gazebo 11 (compatible with Noetic)
-    ros-noetic-gazebo-ros \
-    ros-noetic-gazebo-ros-control \
-    ros-noetic-gazebo-plugins \
-    # ROS control
-    ros-noetic-ros-control \
-    ros-noetic-ros-controllers \
-    ros-noetic-controller-manager \
-    # Navigation stack
-    ros-noetic-navigation \
-    ros-noetic-move-base \
-    ros-noetic-costmap-2d \
-    ros-noetic-map-server \
-    ros-noetic-amcl \
-    # Sensor / TF utilities
-    ros-noetic-tf2-sensor-msgs \
-    ros-noetic-tf2-geometry-msgs \
-    ros-noetic-laser-geometry \
-    ros-noetic-depthimage-to-laserscan \
-    ros-noetic-pcl-ros \
-    ros-noetic-pointcloud-to-laserscan \
-    # Robot description & state
-    ros-noetic-robot-state-publisher \
-    ros-noetic-joint-state-publisher \
-    ros-noetic-xacro \
-    ros-noetic-urdf \
-    # People detection / tracking
-    # ros-noetic-people-msgs is built from source (in the workspace)
-    # BFL binary for arm64 is liborocos-bfl-dev (not ros-noetic-bfl)
-    liborocos-bfl-dev \
-    # Vision / face detection
-    ros-noetic-cv-bridge \
-    ros-noetic-image-transport \
+    build-essential cmake git wget \
+    python3-pip python3-colcon-common-extensions python3-rosdep \
+    ros-humble-gazebo-ros \
+    ros-humble-gazebo-ros-pkgs \
+    ros-humble-gazebo-plugins \
+    ros-humble-gazebo-ros2-control \
+    ros-humble-ros2-control \
+    ros-humble-ros2-controllers \
+    ros-humble-controller-manager \
+    ros-humble-joint-state-broadcaster \
+    ros-humble-joint-trajectory-controller \
+    ros-humble-robot-state-publisher \
+    ros-humble-joint-state-publisher \
+    ros-humble-xacro \
+    ros-humble-tf2-ros \
+    ros-humble-tf2-geometry-msgs \
+    ros-humble-tf2-sensor-msgs \
+    ros-humble-sensor-msgs \
+    ros-humble-sensor-msgs-py \
+    ros-humble-geometry-msgs \
+    ros-humble-nav-msgs \
+    ros-humble-std-msgs \
+    ros-humble-message-filters \
+    ros-humble-laser-geometry \
+    ros-humble-pcl-ros \
+    ros-humble-cv-bridge \
+    ros-humble-image-transport \
+    ros-humble-navigation2 \
+    ros-humble-nav2-bringup \
+    ros-humble-slam-toolbox \
     python3-opencv \
-    # Dynamic reconfigure
-    ros-noetic-ddynamic-reconfigure \
-    # Protobuf (Gazebo plugin)
-    libprotobuf-dev \
-    protobuf-compiler \
-    # Virtual display + VNC for browser-based GUI (no XQuartz needed on macOS)
+    python3-numpy \
     xvfb \
     tigervnc-standalone-server \
     tigervnc-common \
@@ -70,18 +51,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     openbox \
     x11-utils \
     mesa-utils \
-    # tini: lightweight init for Docker — reaps zombie child processes
     tini \
+    netcat \
     && rm -rf /var/lib/apt/lists/*
 
-# ─── Pepper meshes ─────────────────────────────────────────────────────────────
-# ros-noetic-pepper-meshes has no arm64 binary; the project ships its own
-# pepper_meshes package in the workspace — no extra install needed.
-
-# numpy and opencv are already pulled in via python3-numpy / python3-opencv
-# through the ros-noetic-cv-bridge apt dependency above — no pip step needed.
-
-# ─── Non-root user for security ───────────────────────────────────────────────
 ARG USERNAME=rosuser
 ARG USER_UID=1000
 ARG USER_GID=1000
@@ -89,60 +62,52 @@ RUN groupadd --gid $USER_GID $USERNAME && \
     useradd --uid $USER_UID --gid $USER_GID -m $USERNAME && \
     echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
-# ─── Catkin workspace ─────────────────────────────────────────────────────────
-RUN mkdir -p /catkin_ws/src && chown -R $USERNAME:$USERNAME /catkin_ws
+RUN mkdir -p /colcon_ws/src && chown -R $USERNAME:$USERNAME /colcon_ws
 
-# Copy the whole repo directly into src/ — catkin scans recursively for
-# package.xml files, so all nested packages are found automatically.
-# pepper_bridge is excluded: requires Python 2 + NAOqi SDK (real robot only).
-COPY --chown=$USERNAME:$USERNAME gazebo_model_velocity_plugin  /catkin_ws/src/gazebo_model_velocity_plugin
-COPY --chown=$USERNAME:$USERNAME navigation_layers             /catkin_ws/src/navigation_layers
-COPY --chown=$USERNAME:$USERNAME people                        /catkin_ws/src/people
-COPY --chown=$USERNAME:$USERNAME pepper_face_detector          /catkin_ws/src/pepper_face_detector
-COPY --chown=$USERNAME:$USERNAME pepper_laser_bridge           /catkin_ws/src/pepper_laser_bridge
-COPY --chown=$USERNAME:$USERNAME pepper_meshes                 /catkin_ws/src/pepper_meshes
-COPY --chown=$USERNAME:$USERNAME pepper_robot                  /catkin_ws/src/pepper_robot
-COPY --chown=$USERNAME:$USERNAME pepper_virtual                /catkin_ws/src/pepper_virtual
-COPY --chown=$USERNAME:$USERNAME velocity_bridge               /catkin_ws/src/velocity_bridge
-COPY --chown=$USERNAME:$USERNAME test_e2e_headless.sh          /catkin_ws/src/test_e2e_headless.sh
+# ---------- Patch gazebo_ros2_control to fix URDF-in-argv crash ----------
+# The apt package passes the entire robot_description URDF as a --param
+# argv to rcl_parse_arguments(), which fails on large URDFs (like Pepper's).
+# Fix: remove the argv path and set robot_description via NodeOptions instead.
+COPY patches/fix_gazebo_ros2_control_urdf_argv.patch /tmp/
+RUN cd /tmp && \
+    git clone --depth 1 --branch 0.4.10 \
+        https://github.com/ros-controls/gazebo_ros2_control.git && \
+    cd gazebo_ros2_control && \
+    git apply /tmp/fix_gazebo_ros2_control_urdf_argv.patch && \
+    cp -r /tmp/gazebo_ros2_control /colcon_ws/src/gazebo_ros2_control
 
-# people_velocity_tracker depends on easy_markers + kalman_filter (non-standard,
-# not in this repo). Mark it to be skipped by catkin.
-RUN touch /catkin_ws/src/people/people_velocity_tracker/CATKIN_IGNORE
+COPY --chown=$USERNAME:$USERNAME gazebo_model_velocity_plugin  /colcon_ws/src/gazebo_model_velocity_plugin
+COPY --chown=$USERNAME:$USERNAME pepper_virtual                /colcon_ws/src/pepper_virtual
+COPY --chown=$USERNAME:$USERNAME pepper_robot                  /colcon_ws/src/pepper_robot
+COPY --chown=$USERNAME:$USERNAME pepper_meshes                 /colcon_ws/src/pepper_meshes
+COPY --chown=$USERNAME:$USERNAME pepper_laser_bridge           /colcon_ws/src/pepper_laser_bridge
+COPY --chown=$USERNAME:$USERNAME velocity_bridge               /colcon_ws/src/velocity_bridge
+COPY --chown=$USERNAME:$USERNAME test_e2e_headless.sh          /colcon_ws/src/test_e2e_headless.sh
 
-# Make Python/shell scripts executable
-RUN find /catkin_ws/src -name "*.py" -exec chmod +x {} \; && \
-    find /catkin_ws/src -name "*.sh" -exec chmod +x {} \;
+RUN find /colcon_ws/src -name "*.py" -exec chmod +x {} \; && \
+    find /colcon_ws/src -name "*.sh" -exec chmod +x {} \;
 
-# ─── Build workspace ──────────────────────────────────────────────────────────
 USER $USERNAME
-WORKDIR /catkin_ws
+WORKDIR /colcon_ws
 RUN /bin/bash -c \
-    "source /opt/ros/noetic/setup.bash && \
-     catkin_make -DCMAKE_BUILD_TYPE=Release -DCATKIN_ENABLE_TESTING=OFF"
+    "source /opt/ros/humble/setup.bash && \
+     colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release 2>&1"
 
-# ─── Shell environment ─────────────────────────────────────────────────────────
-# GAZEBO_MODEL_PATH as ENV so it is available to all processes, not just login shells
-ENV GAZEBO_MODEL_PATH=/catkin_ws/src/pepper_virtual/pepper_gazebo_plugin/models
+ENV GAZEBO_MODEL_PATH=/colcon_ws/src/pepper_virtual/pepper_gazebo_plugin/models:/colcon_ws/install/pepper_description/share:/colcon_ws/install/pepper_meshes/share
+ENV GAZEBO_PLUGIN_PATH=/colcon_ws/install/gazebo_model_velocity_plugin/lib
 
-RUN echo 'source /opt/ros/noetic/setup.bash' >> /home/$USERNAME/.bashrc && \
-    echo 'source /catkin_ws/devel/setup.bash' >> /home/$USERNAME/.bashrc
+RUN echo 'source /opt/ros/humble/setup.bash' >> /home/$USERNAME/.bashrc && \
+    echo 'source /colcon_ws/install/setup.bash' >> /home/$USERNAME/.bashrc
 
-# ─── VNC password (empty — LAN-only use) ─────────────────────────────────────
 RUN mkdir -p /home/$USERNAME/.vnc && \
-    echo "" | vncpasswd -f > /home/$USERNAME/.vnc/passwd && \
-    chmod 600 /home/$USERNAME/.vnc/passwd && \
     chown -R $USERNAME:$USERNAME /home/$USERNAME/.vnc
 
-# noVNC web port (browser GUI)
 EXPOSE 6080
-# VNC port (Xvnc runs on display :1 → port 5901)
 EXPOSE 5901
 
-# ─── Entrypoint ───────────────────────────────────────────────────────────────
 COPY --chown=$USERNAME:$USERNAME docker-entrypoint.sh /home/$USERNAME/docker-entrypoint.sh
 RUN chmod +x /home/$USERNAME/docker-entrypoint.sh
 
-WORKDIR /catkin_ws
+WORKDIR /colcon_ws
 ENTRYPOINT ["/home/rosuser/docker-entrypoint.sh"]
 CMD ["gui"]

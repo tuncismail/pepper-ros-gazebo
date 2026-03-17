@@ -1,50 +1,37 @@
 #!/usr/bin/env python3
 from math import atan2, cos, radians, sin, sqrt, degrees, isnan
+from copy import deepcopy
 
-import rospy
+import rclpy
+import rclpy.node
+import rclpy.time
+import tf2_ros
+from tf2_ros import TransformListener
 
-from tf import TransformListener
-# from laser_geometry import LaserProjection
+import message_filters
 from sensor_msgs.msg import LaserScan, PointCloud2
-from message_filters import TimeSynchronizer, Subscriber
-from sensor_msgs.point_cloud2 import read_points, create_cloud_xyz32
+from sensor_msgs_py.point_cloud2 import read_points, create_cloud_xyz32
 from tf2_sensor_msgs.tf2_sensor_msgs import do_transform_cloud
 from geometry_msgs.msg import TransformStamped
 from geometry_msgs.msg import Vector3, Quaternion
-from ddynamic_reconfigure_python.ddynamic_reconfigure import DDynamicReconfigure as DDR
 
-import sensor_msgs.point_cloud2 as pc2
+import sensor_msgs_py.point_cloud2 as pc2
 
 import numpy as np
+
 """
 Author: Sammy Pfeiffer <Sammy.Pfeiffer at student.uts.edu.au>
 With LaserProject implementation borrowed from the laser_geometry package.
+ROS 2 Humble port: 2024
 """
 
 
 class LaserProjection:
     """
     A class to Project Laser Scan
-    This calls will project laser scans into point clouds. It caches
+    This class will project laser scans into point clouds. It caches
     unit vectors between runs (provided the angular resolution of
     your scanner is not changing) to avoid excess computation.
-    By default all range values less thatn the scanner min_range,
-    greater than the scanner max_range are removed from the generated
-    point cloud, as these are assumed to be invalid.
-    If it is important to preserve a mapping between the index of
-    range values and points in the cloud, the recommended approach is to
-    pre-filter your laser scan message to meet the requirement that all
-    ranges are between min and max_range.
-    The generate PointClouds have a number of channels which can be enabled
-    through the use of ChannelOption.
-    - ChannelOption.INTENSITY - Create a channel named "intensities" with the
-    intensity of the return for each point.
-    - ChannelOption.INDEX     - Create a channel named "index" containing the
-    index from the original array for each point.
-    - ChannelOption.DISTANCE  - Create a channel named "distance" containing
-    the distance from the laser to each point.
-    - ChannelOption.TIMESTAMP - Create a channel named "stamps" containing the
-    specific timestamp at which each point was measured.
     """
 
     LASER_SCAN_INVALID = -1.0
@@ -52,45 +39,30 @@ class LaserProjection:
     LASER_SCAN_MAX_RANGE = -3.0
 
     class ChannelOption:
-        NONE = 0x00  # Enable no channels
-        INTENSITY = 0x01  # Enable "intensities" channel
-        INDEX = 0x02  # Enable "index"       channel
-        DISTANCE = 0x04  # Enable "distances"   channel
-        TIMESTAMP = 0x08  # Enable "stamps"      channel
-        VIEWPOINT = 0x10  # Enable "viewpoint"   channel
+        NONE = 0x00
+        INTENSITY = 0x01
+        INDEX = 0x02
+        DISTANCE = 0x04
+        TIMESTAMP = 0x08
+        VIEWPOINT = 0x10
         DEFAULT = (INTENSITY | INDEX)
 
     def __init__(self):
         self.__angle_min = 0.0
         self.__angle_max = 0.0
-
         self.__cos_sin_map = np.array([[]])
 
     def projectLaser(self, scan_in,
                      range_cutoff=-1.0, channel_options=ChannelOption.DEFAULT):
-        """
-        Project a sensor_msgs::LaserScan into a sensor_msgs::PointCloud2.
-        Project a single laser scan from a linear array into a 3D
-        point cloud. The generated cloud will be in the same frame
-        as the original laser scan.
-        Keyword arguments:
-        scan_in -- The input laser scan.
-        range_cutoff -- An additional range cutoff which can be
-            applied which is more limiting than max_range in the scan
-            (default -1.0).
-        channel_options -- An OR'd set of channels to include.
-        """
         return self.__projectLaser(scan_in, range_cutoff, channel_options)
 
     def __projectLaser(self, scan_in, range_cutoff, channel_options):
         N = len(scan_in.ranges)
-
         ranges = np.array(scan_in.ranges)
 
         if (self.__cos_sin_map.shape[1] != N or
-            self.__angle_min != scan_in.angle_min or
+                self.__angle_min != scan_in.angle_min or
                 self.__angle_max != scan_in.angle_max):
-            rospy.logdebug("No precomputed map given. Computing one.")
 
             self.__angle_min = scan_in.angle_min
             self.__angle_max = scan_in.angle_max
@@ -100,7 +72,6 @@ class LaserProjection:
 
         output = ranges * self.__cos_sin_map
 
-        # Set the output cloud accordingly
         cloud_out = PointCloud2()
 
         fields = [pc2.PointField() for _ in range(3)]
@@ -227,163 +198,135 @@ class LaserProjection:
 
                 points.append(point)
 
-                big_str += "   " + str(idx).zfill(2) + ": x: " + str(round(p[0], 2)) + ", y: " + str(round(
-                    p[1], 2)) + ", z: " + str(round(p[2], 2)) + " = " + str(round(dist, 2)) + "m (at " + str(round(degrees(idx * angle_increment + min_angle), 2)) + "deg)\n"
+                big_str += ("   " + str(idx).zfill(2) + ": x: " +
+                            str(round(p[0], 2)) + ", y: " + str(round(p[1], 2)) +
+                            ", z: " + str(round(p[2], 2)) + " = " +
+                            str(round(dist, 2)) + "m (at " +
+                            str(round(degrees(idx * angle_increment + min_angle), 2)) + "deg)\n")
 
-        rospy.loginfo("Projected cloud:")
-        rospy.loginfo(big_str)
         cloud_out = pc2.create_cloud(scan_in.header, fields, points)
-
         return cloud_out
 
 
-class LaserPublisher(object):
+class LaserPublisher(rclpy.node.Node):
     def __init__(self):
-        if not rospy.core.is_initialized():
-            rospy.init_node('laser_test')
-            rospy.loginfo("Initialised rospy node: laser_test")
+        super().__init__('laser_publisher')
 
-        self.tl = TransformListener()
+        # Parameters (replacing ddynamic_reconfigure)
+        self.declare_parameter('angle_increment', radians(120.0 * 2.0) / 61.0)
+        self.declare_parameter('half_max_angle', 120.0)
+
         self.lp = LaserProjection()
 
+        # TF2
+        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
+
         # Publishers
-        self.all_laser_pub = rospy.Publisher(
-            '/pepper/laser_2', LaserScan, queue_size=1)
-        self.pc_pub = rospy.Publisher('/cloud', PointCloud2, queue_size=1)
-        self.pcl_pub = rospy.Publisher('/cloudl', PointCloud2, queue_size=1)
-        self.pcr_pub = rospy.Publisher('/cloudr', PointCloud2, queue_size=1)
-        self.pc_redone_pub = rospy.Publisher('/cloud_redone',
-                                             PointCloud2, queue_size=1)
-        self.pc_rereprojected_pub = rospy.Publisher('/cloud_rereprojected',
-                                                    PointCloud2,
-                                                    queue_size=1)
+        self.all_laser_pub = self.create_publisher(LaserScan, '/pepper/laser_2', 1)
+        self.pc_pub = self.create_publisher(PointCloud2, '/cloud', 1)
+        self.pcl_pub = self.create_publisher(PointCloud2, '/cloudl', 1)
+        self.pcr_pub = self.create_publisher(PointCloud2, '/cloudr', 1)
+        self.pc_redone_pub = self.create_publisher(PointCloud2, '/cloud_redone', 1)
+        self.pc_rereprojected_pub = self.create_publisher(PointCloud2, '/cloud_rereprojected', 1)
 
-        # Subscribers
-        left_sub = Subscriber('/pepper/scan_left', LaserScan)
-        front_sub = Subscriber('/pepper/scan_front', LaserScan)
-        right_sub = Subscriber('/pepper/scan_right', LaserScan)
+        # Subscribers via message_filters
+        left_sub = message_filters.Subscriber(self, LaserScan, '/pepper/scan_left')
+        front_sub = message_filters.Subscriber(self, LaserScan, '/pepper/scan_front')
+        right_sub = message_filters.Subscriber(self, LaserScan, '/pepper/scan_right')
 
-        self.ts = TimeSynchronizer([left_sub, front_sub, right_sub],
-                                   10)
-        rospy.loginfo("Finished intialising")
-        self.ddr = DDR('increment')
-        default_increment = radians(120.0 * 2.0) / 61.0
-        self.ddr.add_variable('angle_increment', '', default_increment,
-                              0.05, 0.08)
-        # 130.665
-        self.ddr.add_variable('half_max_angle', '', 120., 115., 145.0)
-        self.ddr.start(self.dyn_rec_callback)
+        self.ts = message_filters.TimeSynchronizer([left_sub, front_sub, right_sub], 10)
         self.ts.registerCallback(self.scan_cb)
-        rospy.loginfo("Ready to go.")
 
-    def add_variables_to_self(self):
-        var_names = self.ddr.get_variable_names()
-        for var_name in var_names:
-            self.__setattr__(var_name, None)
+        self.get_logger().info("LaserPublisher ready.")
 
-    def dyn_rec_callback(self, config, level):
-        rospy.loginfo("Received reconf call: " + str(config))
-        # Update all variables
-        var_names = self.ddr.get_variable_names()
-        for var_name in var_names:
-            self.__dict__[var_name] = config[var_name]
-        return config
+    @property
+    def angle_increment(self):
+        return self.get_parameter('angle_increment').value
+
+    @property
+    def half_max_angle(self):
+        return self.get_parameter('half_max_angle').value
 
     def scan_cb(self, left, front, right):
-        rospy.loginfo("We got scan_cb")
+        self.get_logger().debug("scan_cb triggered")
         translated_points = []
         try:
             pc_left = self.lp.projectLaser(left, channel_options=0x00)
             pc_front = self.lp.projectLaser(front, channel_options=0x00)
             pc_right = self.lp.projectLaser(right, channel_options=0x00)
         except Exception as e:
-            rospy.logerr("Failed to transform laser scan because: " + str(e))
+            self.get_logger().error("Failed to project laser scan: " + str(e))
+            return
 
-        pc_left.header.stamp = rospy.Time.now()
+        pc_left.header.stamp = self.get_clock().now().to_msg()
         pc_left.header.frame_id = 'SurroundingLeftLaser_frame'
         self.pcl_pub.publish(pc_left)
         self.pcr_pub.publish(pc_right)
 
-        transform_right_to_front = self.tl.lookupTransform(
-            'base_footprint', 'SurroundingRightLaser_frame', rospy.Time(0))
-        rospy.logdebug("Transform Right to Front:")
-        rospy.logdebug(transform_right_to_front)
-        ts = TransformStamped()
-        ts.transform.translation = Vector3(*transform_right_to_front[0])
-        ts.transform.rotation = Quaternion(*transform_right_to_front[1])
-        ts.header.stamp = rospy.Time.now()
-        transformed_cloud = do_transform_cloud(pc_right, ts)
-        # right point cloud translation
+        try:
+            ts_right = self.tf_buffer.lookup_transform(
+                'base_footprint', 'SurroundingRightLaser_frame',
+                rclpy.time.Time())
+        except Exception as e:
+            self.get_logger().debug("TF right lookup failed: " + str(e))
+            return
+        self.get_logger().debug("Transform Right to Front: " + str(ts_right))
+        transformed_cloud = do_transform_cloud(pc_right, ts_right)
         for p in read_points(transformed_cloud,
                              field_names=('x', 'y', 'z'),
                              skip_nans=False):
             translated_points.append(p)
 
         for i in range(8):
-            translated_points.append(
-                (float('nan'), float('nan'), float('nan')))
+            translated_points.append((float('nan'), float('nan'), float('nan')))
 
-        transform_front_to_front = self.tl.lookupTransform(
-            'base_footprint', 'SurroundingFrontLaser_frame', rospy.Time(0))
-        rospy.logdebug("Transform Front to Front:")
-        rospy.logdebug(transform_front_to_front)
-        ts = TransformStamped()
-        ts.transform.translation = Vector3(*transform_front_to_front[0])
-        ts.transform.rotation = Quaternion(*transform_front_to_front[1])
-        ts.header.stamp = rospy.Time.now()
-        transformed_cloud_f = do_transform_cloud(pc_front, ts)
+        try:
+            ts_front = self.tf_buffer.lookup_transform(
+                'base_footprint', 'SurroundingFrontLaser_frame',
+                rclpy.time.Time())
+        except Exception as e:
+            self.get_logger().debug("TF front lookup failed: " + str(e))
+            return
+        self.get_logger().debug("Transform Front to Front: " + str(ts_front))
+        transformed_cloud_f = do_transform_cloud(pc_front, ts_front)
 
-        # front point cloud
         for p in read_points(transformed_cloud_f,
                              field_names=('x', 'y', 'z'),
                              skip_nans=False):
             translated_points.append(p)
 
-        transform_left_to_front = self.tl.lookupTransform(
-            'base_footprint', 'SurroundingLeftLaser_frame', rospy.Time(0))
-        rospy.logdebug("Transform Left to Front:")
-        rospy.logdebug(transform_left_to_front)
-        ts = TransformStamped()
-        ts.transform.translation = Vector3(*transform_left_to_front[0])
-        ts.transform.rotation = Quaternion(*transform_left_to_front[1])
-        ts.header.stamp = rospy.Time.now()
-        from copy import deepcopy
-        transformed_cloud_l = do_transform_cloud(deepcopy(pc_left), ts)
+        try:
+            ts_left = self.tf_buffer.lookup_transform(
+                'base_footprint', 'SurroundingLeftLaser_frame',
+                rclpy.time.Time())
+        except Exception as e:
+            self.get_logger().debug("TF left lookup failed: " + str(e))
+            return
+        self.get_logger().debug("Transform Left to Front: " + str(ts_left))
+        transformed_cloud_l = do_transform_cloud(deepcopy(pc_left), ts_left)
 
         for i in range(8):
-            translated_points.append(
-                (float('nan'), float('nan'), float('nan')))
+            translated_points.append((float('nan'), float('nan'), float('nan')))
 
-        # left pc translation
         for p in read_points(transformed_cloud_l,
                              field_names=('x', 'y', 'z'),
                              skip_nans=False):
             translated_points.append(p)
 
-        # Create a point cloud from the combined points wrt the front
-        # laser frame
+        # Create a point cloud from the combined points wrt base_footprint
         pc_front.header.frame_id = 'base_footprint'
         point_cloud = create_cloud_xyz32(pc_front.header, translated_points)
         self.pc_pub.publish(point_cloud)
-        rospy.logdebug("pointcloud all together len: " +
-                       str(point_cloud.width))
-
-        # # double check we have the same thing
-        # compare_str = "\n"
-        # for idx, (tp, pcp) in enumerate(zip(translated_points, read_points(point_cloud))):
-        #     compare_str += str(idx).zfill(2) + ":\n"
-        #     compare_str += "  tp : " + str(tp)
-        #     compare_str += "\n  pcp: " + str(pcp) + "\n"
-        # rospy.loginfo(compare_str)
-        # # OK we know they are the same
-        # # translated_points and point_cloud contain virtually the same data
+        self.get_logger().debug("pointcloud all together len: " +
+                                str(point_cloud.width))
 
         # Convert combined point cloud into LaserScan
         all_laser_msg = LaserScan()
         laser_ranges, angle_min, angle_max, angle_increment = self.pc_to_laser(
             point_cloud)
         all_laser_msg.header.frame_id = 'base_footprint'
-        all_laser_msg.header.stamp = rospy.Time.now()
+        all_laser_msg.header.stamp = self.get_clock().now().to_msg()
         all_laser_msg.ranges = laser_ranges
         all_laser_msg.angle_min = angle_min
         all_laser_msg.angle_max = angle_max
@@ -393,18 +336,17 @@ class LaserPublisher(object):
         all_laser_msg.intensities = []
         self.all_laser_pub.publish(all_laser_msg)
 
-        rospy.logdebug("all_laser_msg len: " + str(len(all_laser_msg.ranges)))
+        self.get_logger().debug("all_laser_msg len: " + str(len(all_laser_msg.ranges)))
         pc_redone = self.lp.projectLaser(all_laser_msg, channel_options=0x00)
-        rospy.logdebug("all_laser pc_redone len: " + str(pc_redone.width))
+        self.get_logger().debug("all_laser pc_redone len: " + str(pc_redone.width))
         self.pc_redone_pub.publish(pc_redone)
 
-        # compare what came in and what came out
-        rospy.logdebug("point_cloud frame_id, pc_redone frame_id:")
-        rospy.logdebug((point_cloud.header.frame_id,
-                        pc_redone.header.frame_id))
-        rospy.logdebug("point_cloud is correct, pc_redone is incorrect")
+        self.get_logger().debug("point_cloud frame_id, pc_redone frame_id: " +
+                                str((point_cloud.header.frame_id,
+                                     pc_redone.header.frame_id)))
         compare_str = "\n"
-        for idx, (point_in, point_out) in enumerate(zip(read_points(point_cloud), read_points(pc_redone))):
+        for idx, (point_in, point_out) in enumerate(
+                zip(read_points(point_cloud), read_points(pc_redone))):
             point_out = [point_out[0], point_out[1], 0.0]
             point_in = [point_in[0], point_in[1], 0.0]
             compare_str += str(idx).zfill(2) + ":\n"
@@ -412,13 +354,12 @@ class LaserPublisher(object):
             compare_str += "\n  out: " + str(point_out) + "\n"
             dist = np.linalg.norm(np.array(point_out) - np.array(point_in))
             compare_str += " dist: " + str(dist) + "\n"
-            # angle
             angle1 = atan2(point_in[1], point_in[0])
             angle2 = atan2(point_out[1], point_out[0])
             angle_dif = angle2 - angle1
             compare_str += " angle dif: " + str(angle_dif) + "\n"
 
-        rospy.logdebug(compare_str)
+        self.get_logger().debug(compare_str)
 
     def pc_to_laser(self, cloud):
         laser_points = []
@@ -428,66 +369,60 @@ class LaserPublisher(object):
         laser_points2 = [float('nan')] * num_rays
         min_angle = -radians(self.half_max_angle)
         max_angle = radians(self.half_max_angle)
-        # angle_increment = self.angle_increment
-        angle_increment = (radians(self.half_max_angle)
-                           * 2.0) / float(num_rays)
+        angle_increment = (radians(self.half_max_angle) * 2.0) / float(num_rays)
         big_str = "\n"
         for idx, p in enumerate(read_points(cloud, skip_nans=False)):
-            #dist = self.get_dist(p[0], p[1])
             p = [p[0], p[1], 0.0]
             dist = np.linalg.norm(np.array((0., 0., 0.)) - np.array(p))
-            # dist1 = self.get_dist(p[0], p[1])
-            big_str += "   " + str(idx).zfill(2) + ": x: " + str(round(p[0], 2)) + ", y: " + str(round(
-                p[1], 2)) + ", z: " + str(round(p[2], 2)) + " = " + str(round(dist, 2)) + "m (at " + str(round(degrees(idx * angle_increment + min_angle), 2)) + "deg)\n"
+            big_str += ("   " + str(idx).zfill(2) + ": x: " + str(round(p[0], 2)) +
+                        ", y: " + str(round(p[1], 2)) + ", z: " + str(round(p[2], 2)) +
+                        " = " + str(round(dist, 2)) + "m (at " +
+                        str(round(degrees(idx * angle_increment + min_angle), 2)) + "deg)\n")
 
             laser_points.append(dist)
-            # coords from dist
             x = dist * cos(idx * angle_increment + min_angle)
             y = dist * sin(idx * angle_increment + min_angle)
-            rospy.logdebug(" [ px, py, are the correct points ] ")
+            self.get_logger().debug(" [ px, py, are the correct points ] ")
             if dist is None:
-                rospy.logwarn("dist is None, setting to 0.0")
+                self.get_logger().warning("dist is None, setting to 0.0")
                 dist = 0.0
             else:
-                rospy.logdebug(f"dist, px, py: {dist} {p[0]} {p[1]}")
-                rospy.logdebug(f"dist, x, y:   {dist} {x} {y}")
+                self.get_logger().debug(f"dist, px, py: {dist} {p[0]} {p[1]}")
+                self.get_logger().debug(f"dist, x, y:   {dist} {x} {y}")
             dist_from_rereproj = self.get_dist(x, y)
-            rospy.logdebug("dist rereproj: " + str(dist_from_rereproj))
-            # print("dist1       : " + str(dist1))
+            self.get_logger().debug("dist rereproj: " + str(dist_from_rereproj))
 
-            # what if a make a pointcloud based in the cos sin version
             points_rereprojected.append((x, y, 0.0))
 
-            # angle from point
             angle = atan2(p[1], p[0])
-            # angle2 = atan2(y, x)
             expected_angle = idx * self.angle_increment + min_angle
             if not isnan(angle):
                 tmp_angle = angle - min_angle
-                rospy.logdebug(f"tmp_angle: {degrees(tmp_angle)} deg")
-                rospy.logdebug("angle_increment: " + str(degrees(angle_increment)))
+                self.get_logger().debug(f"tmp_angle: {degrees(tmp_angle)} deg")
+                self.get_logger().debug("angle_increment: " + str(degrees(angle_increment)))
                 closest_index = int(tmp_angle / angle_increment)
-                rospy.logdebug("closest index: " + str(closest_index))
+                self.get_logger().debug("closest index: " + str(closest_index))
                 # Discard points outside the scan cone — do NOT clamp to boundary
                 # slots, as that would place e.g. a +170° reading at the -120°
                 # position and corrupt navigation costmap data.
                 if 0 <= closest_index < len(laser_points2):
                     laser_points2[closest_index] = dist
             else:
-                rospy.logdebug("nan, not adding anything to scan")
+                self.get_logger().debug("nan, not adding anything to scan")
 
-            rospy.logdebug("Angle from p : " + str(round(degrees(angle), 2)))
-            rospy.logdebug("Expected angle: " + str(round(degrees(expected_angle), 2)))
+            self.get_logger().debug("Angle from p : " + str(round(degrees(angle), 2)))
+            self.get_logger().debug("Expected angle: " + str(round(degrees(expected_angle), 2)))
 
-        rospy.logdebug("Lasered cloud")
-        rospy.logdebug(big_str)
+        self.get_logger().debug("Lasered cloud")
+        self.get_logger().debug(big_str)
 
         laser_points = laser_points2
-        rospy.logdebug("Len of laser points after new technique: " + str(len(laser_points)))
+        self.get_logger().debug("Len of laser points after new technique: " +
+                                str(len(laser_points)))
 
         rereprojected_pc = PointCloud2()
         rereprojected_pc.header.frame_id = 'base_footprint'
-        rereprojected_pc.header.stamp = rospy.Time.now()
+        rereprojected_pc.header.stamp = self.get_clock().now().to_msg()
         point_cloud_rere = create_cloud_xyz32(
             rereprojected_pc.header, points_rereprojected)
         self.pc_rereprojected_pub.publish(point_cloud_rere)
@@ -499,8 +434,12 @@ class LaserPublisher(object):
 
 
 if __name__ == "__main__":
+    rclpy.init()
     try:
         lp = LaserPublisher()
-        rospy.spin()
-    except rospy.ROSInterruptException:
+        rclpy.spin(lp)
+    except KeyboardInterrupt:
         pass
+    finally:
+        lp.destroy_node()
+        rclpy.shutdown()

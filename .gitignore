@@ -1,7 +1,8 @@
-# Catkin build artifacts
+# Catkin / Colcon build artifacts
 build/
 devel/
 install/
+log/
 *.pyc
 __pycache__/
 
@@ -20,6 +21,17 @@ Makefile
 .vscode/
 *.swp
 *.swo
+*~
 
 # Claude Code
 .claude/
+
+# Docker
+docker-compose.override.yml
+
+# ROS bags
+*.bag
+*.db3
+
+# Gazebo
+*.log
